@@ -104,6 +104,66 @@ A directory entry stores information about a file or subdirectory:
 Subdirectory entries use the `start cluster` field to point to a cluster
 that then again holds a series of directory entries.
 
+NTFS
+....
+
+The New Technologies File System (NTFS) was designed by Microsoft and is the standard file system of Microsoft operating systems
+starting from Windows NT/2000. NTFS is a significantly more complex file system than FAT with many features to enhance reliability,
+security and scalability. Unfortunately, there is no official published specification for NTFS from Microsoft and low-level details
+can only be found in unofficial descriptions.
+
+Everything is a File
+********************
+
+"Everything is a File" is the most important concept in the design of NTFS. Each byte of an NTFS file system belongs to a file and
+the entire file system is considered a data area. Even system data and meta data, which are usually hidden by other file systems,
+are allocated to files and could be located anywhere in the volume. Consequently, NTFS file systems do not have a specific layout
+apart from the first sectors of the volume containing the boot sector and initial program loader.
+
+Master File Table
+*****************
+
+The Master File Table (MFT) contains an entry for every file and directory stored in a NTFS partition. It contains the necessary
+metadata such as the file name, -size, and the location of the stored data. MFT entries allocate a fixed size, usually 1024 bytes,
+but only the first 42 bytes have a defined purpose (MFT Entry Header). The remaining bytes store attributes, which contain the
+metadata for a file (e.g.: $STANDARD_INFORMATION, $FILE_NAME, $DATA).
+
+
+File System Metadata Files
+**************************
+
+NTFS stores its administrative Data in metadata files, which contain central information about the NTFS file system. Their names
+start with dollar character $ and the first letter is capitalized (except for ’.’). Microsoft reserves the first 16 MFT entries
+for file system metadata files. The following table contains the standard NTFS file system metadata files (Brian Carrier, p.202):
+
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Entry | File Name | Description                                                                                                                                            |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 0     | $MFT      | TheThe entry for the MFT itself.                                                                                                                       |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1     | $MFTMirr  | Contains a backup of the first entries in the MFT.                                                                                                     |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2     | $LogFile  | Contains the journal that records the metadata transactions.                                                                                           |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 3     | $Volume   | Contains the volume information such as the label, identifier, and version.                                                                            |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 4     | $AttrDef  | Contains the attribute information, such as the identifier values, name, and sizes                                                                     |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 5     | .         | Contains the root directory of the file system.                                                                                                        |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 6     | $Bitmap   | Contains the allocation status of each cluster in the file system                                                                                      |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 7     | $Boot     | Contains the boot sector and boot code for the file system.                                                                                            |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 8     | $BadClus  | Contains the clusters that have bad sectors                                                                                                            |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 9     | $Secure   | Contains information about the security and access control for the files                                                                               |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 10    | $Upcase   | Contains the uppercase version of every Unicode character.                                                                                             |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 11    | $Extend   | A directory that contains files for optional extensions. Microsoft does not typically place the files in this directory into the reserved MFT entries. |
++-------+-----------+--------------------------------------------------------------------------------------------------------------------------------------------------------+
+
 EXT4
 ....
 
@@ -191,7 +251,7 @@ Following sections give a brief overview about each implemented hiding technique
 File Slack
 ..........
 
-The smallest unit in the data area of a filesystem is called "cluster".
+The smallest unit in the data area of a filesystem is called "cluster", or "block" in the case of ext4.
 This unit is a fixed size value, that can often be configured at creation time
 of the filesystem.
 It is calculated from the `sector size * sectors per cluster`.
@@ -218,22 +278,26 @@ the File Slack.
 2. Calculate the start of the Drive Slack
 3. Write data until no data is left or the end of the cluster is reached
 
+In case of ext4 filesystems, most implementations pad the complete File Slack with zeros,
+making the distinction between RAM and Drive Slack unnecessary but also making the detection
+of hidden data more likely.
+
+Our implementation for ext4 therefore calculates the end of a file on the filesystem
+and writes data into the following File Slack until no data is left or the end of the current
+block is reached
+
 MFT Entry Slack
 ...............
 
-The Master File Table (MFT) contains an entry for every file and directory stored in
-a NTFS partition. It contains the necessary metadata such as the file name, -size, and
-the location of the stored data. MFT entries allocate a fixed size, usually 1024 bytes,
-but only the first 42 bytes have a defined purpose (MFT Entry Header). The remaining bytes
-store attributes, which contain the metadata for a file (e.g.: $STANDARD_INFORMATION,
-$FILE_NAME, $DATA). An MFT entry does not have to fill up all of its allocated bytes, which
-often leads to some unused space at the end of an entry.
+The Master File Table (MFT) contains contains the necessary metadata for every file and directory
+stored in a NTFS partition (see section 'Filesystem Data Structures'). An MFT entry does not have
+to fill up all of its allocated bytes, which often leads to some unused space at the end of an entry.
 
 .. image:: _static/mft_entry.png
 
-This unused space, the MFT entry slack, can still contain data of an old MFT entry,
-which was previously stored in the same location. This makes the MFT entry slack an
-ideal place to hide data inconspicuously.
+In most implementations this unused space, the MFT entry slack, can still contain data of an old MFT entry,
+which was previously stored in the same location (was not the case with ntfs-3g 2013.1.1.13AR.1 driver).
+This makes the MFT entry slack an suitable place to hide data inconspicuously.
 
 NTFS uses a concept called Fixup (Brian Carrier, p.253) for its important data structures,
 such as the MFT, in order to detect damaged sectors and corrupt data structures. When an
@@ -253,19 +317,39 @@ The process of hiding data in the MFT entry slack:
 3. Write data and avoid the last two bytes of each sector
 4. If copies exit in $MFTMirr write the same data there
 
-Bad Cluster
-...........
+Bad Cluster Allocation
+......................
 
-If a sector or a cluster of sectors is damaged, it is not possible to read nor write data from it. The file system then marks the affected area as bad and saves the address for future reference. Affected areas are saved in a MFT file entry called $BadClus, the entries in this file will be ignored. As these addresses will be ignored by the file system, it is a very easy way to hide data in it.
+If a sector or a cluster of sectors is damaged, read and write operations would lead to faulty data.
+Therefore the filesystem marks the affected area as bad and saves the address for future reference.
+The filesystem won't try to use those marked areas anymore.
+By marking some actually free clusters as faulty ones, we can reserve them for hiding data in it.
+
+In NTFS filesystems, affected areas are saved in an MFT file entry called $BadClus, the entries in this file will be ignored.
+In FAT filesystems, clusters are marked as bad in the File Allocation Table.
 
 To hide data in a bad cluster:
 
 1. Calculate size of data to hide
-2. Find and save free clusters (Note: instead of scanning the entire system it is easier to check the MFT entry $Bitmap for allocated and unallocated clusters)
+2. Find and save free clusters
 3. Write data into the clusters
-4. Add address of the used clusters to $BadClus, mark their positions in $Bitmap as allocated
+4. For NTFS: Add address of the used clusters to $BadClus, mark their positions in $Bitmap as allocated.
+   For FAT: Set the cluster values of the corresponding File Allocation entries  to 'bad' marker
 
+Additional Cluster Allocation
+.............................
 
+Clusters are either unallocated or allocated to a file. By allocating an actually unallocated cluster
+to a file, the filesystem will not try to allocate that cluster and write file data to it, and data can be hidden
+in that cluster. If the file the cluster is allocated to grows in size and exceeds the boundary of
+its originally allocated clusters, the file will grow into the additionally allocated cluster
+and overwrite the hidden data, so a file which is unlikely to grow should be chosen.
+
+The procedure is as follows:
+
+1. Calculate how many additional clusters to allocate
+2. Find that many unallocated clusters and allocate them to a file
+3. For NTFS: Change the allocated size attribute of that file depending on how many clusters were added
 
 Reserved Group Descriptor Tables
 ................................
