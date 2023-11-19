@@ -7,34 +7,36 @@ conventional file access methods. This toolkit is intended to introduce people
 to the concept of established anti-forensic methods associated with data
 hiding.
 
-# Techniques we found
+This document will provide some basic information about `fishy`. For a more in-depth documentation, you can visit the [github wiki](https://github.com/dasec/fishy/wiki)
+or use the documentation within the repository.
 
-* FAT:
-	* File Slack [✓]
-	* Bad Cluster Allocation [✓]
-	* Allocate More Clusters for a file [✓]
+## Code Authors and Project
 
-* NTFS:
-	* File Slack [✓]
-	* MFT Slack [✓]
-	* Allocate More Clusters for File [✓]
-	* Bad Cluster Allocation [✓]
-	* Add data attribute to directories
-	* Alternate Data Streams
-* Ext4:
-	* Superblock Slack [✓]
-	* reserved GDT blocks [✓]
-	* File Slack [✓]
-	* inode:
-		* osd2 [✓]
-		* obso_faddr [✓]
-	
-# Requirements
+`fishy` is a project initiated by the da/sec research group and several bachelor students of the Hochschule Darmstadt (h_da), University of Applied Sciences.
+
+Student members: Jan Türr, Adrian Kailus, Christian Hecht, Matthias Greune, Deniz Celik, Tim Christen, Dustin Kern, Yannick Mau and Patrick Naili.
+
+da/sec members: Thomas Göbel, Sebastian Gärtner and Lorenz Liebler.
+
+
+## References
+
+* [1] Adrian V. Kailus, Christian Hecht, Thomas Göbel und Lorenz Liebler, „fishy – Ein Framework zur Umsetzung von Verstecktechniken in Dateisystemen“, in D-A-CH Security, Gelsenkirchen (Germany), September 2018.
+* [2] Thomas Göbel and Harald Baier, „fishy – A Framework for Implementing Filesystem-based Data Hiding Techniques“, in Proceedings of the 10th EAI International Conference on Digital Forensics & Cyber Crime (ICDF2C), New Orleans (United States), September 2018.
+* [3] Thomas Göbel, Jan Türr and Harald Baier, „Revisiting Data Hiding Techniques for Apple File System“, in Proceedings of the 12th International Workshop on Digital Forensics (WSDF) to be held in conjunction with the 14th International Conference on Availability, Reliability and Security (ARES), Canterbury (UK), August 2019.
+
+## Attribution
+
+Any publications using the code must cite and reference the conference paper [1] and [2].
+
+
+## Requirements
 
 * Build:
 	* Python version 3.5 or higher
 	* argparse - command line argument parsing
-	* construct - parsing FAT filesystems
+	* construct - parsing FAT filesystems 
+		* __Note__: Please install a version earlier than 2.9 (2.8.22 is recommended)
 	* pytsk3 - parsing NTFS filesystems
 	* simple-crypt - encryption of metadata using AES-CTR
 * Testing
@@ -45,7 +47,7 @@ hiding.
 	* sphinx-argparse - cli parameter documentation
 	* graphviz - unix tool. generates graphs, used in the documentation
 
-# Installation
+## Installation
 
 ```bash
 # To run unit tests before installing
@@ -69,7 +71,38 @@ $ sudo apt-get install latexmk
 $ sudo apt-get install texlive-formats-extra
 ```
 
-# Usage
+# Usage and Hiding Techniques
+
+## Techniques we found
+
+* FAT:
+	* File Slack [✓]
+	* Bad Cluster Allocation [✓]
+	* Allocate More Clusters for a file [✓]
+
+* NTFS:
+	* File Slack [✓]
+	* MFT Slack [✓]
+	* Allocate More Clusters for File [✓]
+	* Bad Cluster Allocation [✓]
+	* Add data attribute to directories
+	* Alternate Data Streams
+* Ext4:
+	* Superblock Slack [✓]
+	* reserved GDT blocks [✓]
+	* File Slack [✓]
+	* inode:
+		* osd2 [✓]
+		* obso_faddr [✓]
+
+* APFS:
+	* Superblock Slack [✓]
+	* Write-Gen-Counter [✓]
+	* Inode Padding [✓]
+	* Timestamp Hiding [✓]
+	* Extended Field Padding [✓]
+
+## CLI
 
 The cli interface groups all hiding techniques (and others) into subcommands. Currently available subcommands are:
 * [`fattools`](#fattools) - Provides some information about a FAT filesystem
@@ -81,6 +114,11 @@ The cli interface groups all hiding techniques (and others) into subcommands. Cu
 * [`reserved_gdt_blocks`](#reserved-gdt-blocks) - Exploitation of reserved GDT blocks
 * [`osd2`](#osd2) - Exploitation of inode's osd2 field
 * [`obso_faddr`](#obso_faddr) - Exploitation of inode's obso_faddr field
+* [`write_gen`](#write_gen) - Exploitation of Write-Gen-Counter field found in inodes.
+* [`inode_padding`](#inode_padding) - Exploitation of inode padding fields.
+* [`timestamp_hiding`](#timestamp_hiding) - Exploitation of nanosecond timestamps.
+* [`xfield_padding`](#xfield_padding) - Exploitation of dynamically created extended fields. 
+
 
 ## FATtools
 
@@ -154,7 +192,7 @@ Available for these filesystem types:
 
 ```bash
 # write into slack space
-$ echo "TOP SECRET" | fishy -d testfs-fat12.dd fileslack -d myfile.txt -m metadata.json -w
+$ echo "TOP SECRET" | fishy -d testfs-fat12.dd fileslack -t myfile.txt -m metadata.json -w
 
 # read from slack space
 $ fishy -d testfs-fat12.dd fileslack -m metadata.json -r
@@ -164,7 +202,7 @@ TOP SECRET
 $ fishy -d testfs-fat12.dd fileslack -m metadata.json -c
 
 # show info about slack space of a file
-$ fishy -d testfs-fat12.dd fileslack -m metadata.json -d myfile.txt -i
+$ fishy -d testfs-fat12.dd fileslack -m metadata.json -t myfile.txt -i
 File: myfile.txt
   Occupied in last cluster: 4
   Ram Slack: 508
@@ -203,7 +241,7 @@ Available for these filesystem types:
 
 ```bash
 # Allocate additional clusters for a file and hide data in it
-$ echo "TOP SECRET" | fishy -d testfs-fat12.dd addcluster -d myfile.txt -m metadata.json -w
+$ echo "TOP SECRET" | fishy -d testfs-fat12.dd addcluster -t myfile.txt -m metadata.json -w
 
 # read hidden data from additionally allocated clusters
 $ fishy -d testfs-fat12.dd addcluster -m metadata.json -r
@@ -259,11 +297,13 @@ $ fishy -d testfs-ext4.dd reserved_gdt_blocks -m metadata.json -c
 ## Superblock Slack
 
 The `superblock_slack` subcommand provides methods to read, write and clean
-the slack of superblocks in an ext4 filesystem
+the slack of superblocks in an ext4 filesystem or the superblock and object map structures
+in an APFS filesystem
 
 Available for these filesystem types:
 
 * EXT4
+* APFS
 
 ```bash
 # write int Superblock Slack
@@ -318,6 +358,83 @@ TOP SECRET
 # clean up obso_faddr inode field
 $ fishy -d testfs-ext4.dd obso_faddr -m metadata.json -c	
 ```
+
+## Write-Gen-Counter
+
+The `write_gen` subcommand provides methods to read, write and clean the Write-Gen-Counter
+field found in APFS inodes
+
+Available for these filesystem types:
+
+* APFS
+
+```bash
+# write into inode write_gen_counter fields
+$ echo "TOP SECRET" | fishy -d testfs-apfs.dd write_gen -m metadata.json -w
+# read hidden data from inode write_gen_counter fields
+$ fishy -d testfs-apfs.dd write_gen -m metadata.json -r
+TOP SECRET
+# clean up write_gen_counter fields
+$ fishy -d testfs-apfs.dd write_gen -m metadata.json -c
+```
+
+## Inode Padding
+
+The `inode_padding` subcommand provides methods to read, write and clean the inode padding fields
+found in APFS inodes
+
+Available for these filesystem types:
+
+* APFS
+
+```bash
+# write into inode padding fields
+$ echo "TOP SECRET" | fishy -d testfs-apfs.dd inode_padding -m metadata.json -w
+# read hidden data from inode padding fields
+$ fishy -d testfs-apfs.dd inode_padding -m metadata.json -r
+TOP SECRET
+# clean up inode padding field
+$ fishy -d testfs-apfs.dd inode_padding -m metadata.json -c
+```
+
+## Timestamp Hiding
+
+The `timestamp_hiding` subcommand provides methods to read, write and clean the nanosecond parts of 
+timestamps located in APFS inodes
+
+Available for these filesystem types:
+
+* APFS
+
+```bash
+# write into inode nanosecond timestamps
+$ echo "TOP SECRET" | fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -w
+# read hidden data from inode nanosecond timestamps
+$ fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -r
+TOP SECRET
+# clean up inode nanosecond timestamps
+$ fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -c
+```
+
+## Extended Field Padding
+
+The `xfield_padding`subcommand provides methods to read, write and clean the dynamically created
+extended field padding areas in APFS inodes
+
+Available for these filesystem types:
+
+* APFS
+
+```bash
+# write into inode extended field padding
+$ echo "TOP SECRET" | fishy -d testfs-apfs.dd xfield_padding -m metadata.json -w
+# read hidden data from inode extended field padding
+$ fishy -d testfs-apfs.dd xfield_padding -m metadata.json -r
+TOP SECRET
+# clean up inode extended field padding
+$ fishy -d testfs-apfs.dd xfield_padding -m metadata.json -c
+```
+
     
 ## Encryption and Checksumming
 
@@ -373,7 +490,7 @@ $ ./create_testfs.sh -t all
 ```
 
 
-## How to implement a hiding technique
+# How to implement a hiding technique
 
 Here some general rules an hints, how one can integrate a hiding technique into the
 existing project structure:

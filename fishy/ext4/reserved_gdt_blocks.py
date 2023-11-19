@@ -26,6 +26,7 @@ class EXT4ReservedGDTBlocksMetadata:
     def add_block(self, block_id: int) -> None:
         """
         adds a block to the list of blocks
+
         :param block_id: int, id of the block
         """
         self.blocks.append(block_id)
@@ -33,6 +34,7 @@ class EXT4ReservedGDTBlocksMetadata:
     def add_length(self, length: int) -> None:
         """
         adds the length of the hidden data
+
         :param length: int, length of the data, which was written to reserved GDT blocks
         """
         self.length.append(length)
@@ -41,6 +43,7 @@ class EXT4ReservedGDTBlocksMetadata:
             -> []:
         """
         returns list of block ids
+
         :returns: list of block_ids
         """
         return self.blocks
@@ -49,14 +52,19 @@ class EXT4ReservedGDTBlocksMetadata:
             -> int:
         """
         returns length of the hidden data
+
         :returns: length of the hidden data
         """
         return self.length[0]
 
 class EXT4ReservedGDTBlocks:
+    """
+    contains and submethods to write, read and clean data using the reserved gdt blocks of an ext4 filesystem. 
+    """
     def __init__(self, stream: typ.BinaryIO, dev: str):
         """
         :param dev: path to an ext4 filesystem
+
         :param stream: filedescriptor of an ext4 filesystem
         """
         self.dev = dev
@@ -67,7 +75,9 @@ class EXT4ReservedGDTBlocks:
             -> EXT4ReservedGDTBlocksMetadata:
         """
         writes from instream into reserved GDT blocks
+
         :param instream: stream to read from
+
         :return: EXT4ReservedGDTBlocksMetadata
         """
         metadata = EXT4ReservedGDTBlocksMetadata()
@@ -76,6 +86,7 @@ class EXT4ReservedGDTBlocks:
 
         total_block_count = self.ext4fs.superblock.data['total_block_count']
         blocks_per_group = self.ext4fs.superblock.data['blocks_per_group']
+		#todo maybe add block group 0 here or with separate function due to different structure; 1024 byte boot sector
         if self._check_if_sparse_super_is_set():
             block_ids = self._get_block_ids_for_sparse_super(total_block_count, blocks_per_group)
         else:
@@ -108,7 +119,9 @@ class EXT4ReservedGDTBlocks:
             -> None:
         """
         writes data hidden in reserved GDT blocks into outstream
+
         :param outstream: stream to write into
+
         :param metadata: EXT4ReservedGDTBlocksMetadata object
         """
         length = metadata.get_length()
@@ -126,6 +139,7 @@ class EXT4ReservedGDTBlocks:
     def clear(self, metadata: EXT4ReservedGDTBlocksMetadata) -> None:
         """
         clears the reserved GDT blocks in which data has been hidden
+
         :param metadata: EXT4ReservedGDTBlocksMetadata object
         """
         block_size = self.ext4fs.blocksize
@@ -137,6 +151,7 @@ class EXT4ReservedGDTBlocks:
     def info(self, metadata: EXT4ReservedGDTBlocksMetadata = None) -> None:
         """
         shows info about the reserved GDT blocks and data hiding space
+
         :param metadata: EXT4ReservedGDTBlocksMetadata object
         """
         total_block_count = self.ext4fs.superblock.data['total_block_count']
@@ -197,6 +212,13 @@ class EXT4ReservedGDTBlocks:
         else:
             architecture = 32
         gdt_size = int(math.ceil((architecture * total_block_group_count) / self.ext4fs.blocksize))
+		
+        #block group 1
+        block_id = (1 * blocks_per_group)
+        block_id = block_id + 2 + gdt_size
+        number_of_reserved_gdt_blocks = self.ext4fs.superblock.data['res_gdt_blocks']
+        for i in range (block_id, (block_id + number_of_reserved_gdt_blocks)):
+            block_ids.append(i)
 
         # 3^x
         block_group_id = 3
@@ -227,12 +249,15 @@ class EXT4ReservedGDTBlocks:
             for i in range(block_id, (block_id + number_of_reserved_gdt_blocks)):
                 block_ids.append(i)
             block_group_id = 7 * block_group_id
-
+			
+        #todo sort block ids list?
+        block_ids.sort()
         return block_ids
 
     def _get_block_ids_for_non_sparse_super(self, total_block_count, blocks_per_group) \
             -> []:
         block_ids = []
+		#todo block id group 0, 1024 byte buffer at beginning
         block_group_id = 1
         total_block_group_count = int(math.ceil(total_block_count / blocks_per_group))
         if self.ext4fs.gdt.is_64bit:
@@ -248,4 +273,5 @@ class EXT4ReservedGDTBlocks:
                 block_ids.append(i)
             block_group_id += 1
 
+        block_ids.sort()
         return block_ids

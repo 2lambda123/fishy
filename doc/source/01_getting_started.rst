@@ -7,13 +7,14 @@ Requirements
 * Build:
         * Python version 3.5 or higher
         * argparse - command line argument parsing
-        * construct - parsing FAT filesystems
+        * construct - parsing FAT filesystems (Currently, a version lower than 2.9 is needed. 2.8.22 was tested and is recommended.)
         * pytsk3 - parsing NTFS filesystems
         * simple-crypt - encryption of metadata using AES-CTR
-* Testing
+        * numpy - Calculating APFS checksums
+* Testing:
         * pytest - unit test framework
         * mount and dd - unix tools. needed for test image generation
-* Documentation
+* Documentation:
         * sphinx - generates the documentation
         * sphinx-argparse - cli parameter documentation
         * graphviz - unix tool. generates graphs, used in the documentation
@@ -48,7 +49,7 @@ You may have to install some extra latex dependencies:
 
 Test Filesystem
 ---------------
-To generate a filesystem for a quick test of fishy, take a look at the appendix 1 `create_testfs.sh`
+To generate a filesystem for a quick test of `fishy`, take a look at the appendix 1 `create_testfs.sh`
 
 Usage
 -----
@@ -56,28 +57,39 @@ Usage
 The cli interface groups all hiding techniques (and others) into
 subcommands. Following table gives an overview over all implemented hiding techniques:
 
-+---------------------+------------------+-----------------------------------------+
-| Hiding technique    |  Filesystem      |     Description                         |
-| (Subcommand)        |                  |                                         |
-+---------------------+----+------+------+-----------------------------------------+
-|                     |FAT | NTFS | Ext4 |                                         |
-+---------------------+----+------+------+-----------------------------------------+
-| fileslack           | ✓  |  ✓   |  ✓   | Exploitation of File Slack              |
-+---------------------+----+------+------+-----------------------------------------+
-| mftslack            |    |  ✓   |      | Exploitation of MFT entry Slack         |
-+---------------------+----+------+------+-----------------------------------------+
-| addcluster          | ✓  |  ✓   |      | Allocate additional clusters for a file |
-+---------------------+----+------+------+-----------------------------------------+
-| badcluster          | ✓  |  ✓   |      | Bad Cluster Allocation                  |
-+---------------------+----+------+------+-----------------------------------------+
-| reserved_gdt_blocks |    |      |  ✓   | Exploitation of Reserved GDT Blocks     |
-+---------------------+----+------+------+-----------------------------------------+
-| superblock_slack    |    |      |  ✓   | Exploitation of Superblock Slack        |
-+---------------------+----+------+------+-----------------------------------------+
-| osd2                |    |      |  ✓   | Use unused inode field osd2             |
-+---------------------+----+------+------+-----------------------------------------+
-| obso_faddr          |    |      |  ✓   | Use unused inode field obso_faddr       |
-+---------------------+----+------+------+-----------------------------------------+
++-----------------------+-------------------------+--------------------------------------------+
+| Hiding technique      |  Filesystem             | Description                                |
+| (Subcommand)          |                         |                                            |
++-----------------------+----+------+------+------+--------------------------------------------+
+|                       |FAT | NTFS | Ext4 | APFS |                                            |
++-----------------------+----+------+------+------+--------------------------------------------+
+| fileslack             | ✓  |  ✓   | ✓    |      | Exploitation of File Slack                 |
++-----------------------+----+------+------+------+--------------------------------------------+
+| mftslack              |    |  ✓   |      |      | Exploitation of MFT entry Slack            |
++-----------------------+----+------+------+------+--------------------------------------------+
+| addcluster            | ✓  |  ✓   |      |      | Allocate additional clusters for a file    |
++-----------------------+----+------+------+------+--------------------------------------------+
+| badcluster            | ✓  |  ✓   |      |      | Bad Cluster Allocation                     |
++-----------------------+----+------+------+------+--------------------------------------------+
+| reserved_gdt_blocks   |    |      |  ✓   |      | Exploitation of Reserved GDT Blocks        |
++-----------------------+----+------+------+------+--------------------------------------------+
+| superblock_slack      |    |      |  ✓   |   ✓  | Exploitation of Superblock Slack           |
++-----------------------+----+------+------+------+--------------------------------------------+
+| osd2                  |    |      |  ✓   |      | Use unused inode field osd2                |
++-----------------------+----+------+------+------+--------------------------------------------+
+| obso_faddr            |    |      |  ✓   |      | Use unused inode field obso_faddr          |
++-----------------------+----+------+------+------+--------------------------------------------+
+| nanoseconds           |    |      |      |  ✓   | Use of nanosecond timestamp part           |
++-----------------------+----+------+------+------+--------------------------------------------+
+| inode_padding         |    |      |      |  ✓   | Use of Padding in Inodes                   |
++-----------------------+----+------+------+------+--------------------------------------------+
+| write_gen_counter     |    |      |      |  ✓   | Use of write counter in Inodes             |
++-----------------------+----+------+------+------+--------------------------------------------+
+| ext_field_padding     |    |      |      |  ✓   | Use of dynamically created Extended Fields |
++-----------------------+----+------+------+------+--------------------------------------------+
+
+
+
 
 Additionally to the hiding techniques above, there are following informational
 subcommands available:
@@ -165,7 +177,7 @@ Available for these filesystem types:
 .. code:: bash
 
     # write into slack space
-    $ echo "TOP SECRET" | fishy -d testfs-fat12.dd fileslack -d myfile.txt -m metadata.json -w
+    $ echo "TOP SECRET" | fishy -d testfs-fat12.dd fileslack -t myfile.txt -m metadata.json -w
 
     # read from slack space
     $ fishy -d testfs-fat12.dd fileslack -m metadata.json -r
@@ -175,7 +187,7 @@ Available for these filesystem types:
     $ fishy -d testfs-fat12.dd fileslack -m metadata.json -c
 
     # show info about slack space of a file
-    $ fishy -d testfs-fat12.dd fileslack -m metadata.json -d myfile.txt -i
+    $ fishy -d testfs-fat12.dd fileslack -m metadata.json -t myfile.txt -i
     File: myfile.txt
       Occupied in last cluster: 4
       Ram Slack: 508
@@ -218,7 +230,7 @@ Available for these filesystem types:
 .. code:: bash
 
     # Allocate additional clusters for a file and hide data in it
-    $ echo "TOP SECRET" | fishy -d testfs-fat12.dd addcluster -d myfile.txt -m metadata.json -w
+    $ echo "TOP SECRET" | fishy -d testfs-fat12.dd addcluster -t myfile.txt -m metadata.json -w
 
     # read hidden data from additionally allocated clusters
     $ fishy -d testfs-fat12.dd addcluster -m metadata.json -r
@@ -281,6 +293,7 @@ the slack of superblocks in an ext4 filesystem
 Available for these filesystem types:
 
 - EXT4
+- APFS
 
 .. code:: bash
 
@@ -337,6 +350,96 @@ Available for these filesystem types:
 
     # clean up obso_faddr inode field
     $ fishy -d testfs-ext4.dd obso_faddr -m metadata.json -c
+	
+timestamp_hiding
+......................
+
+The ``timestamp_hiding`` subcommand provides methods to read, write and clean
+the nanosecond part of a timestamp.
+
+Available for these filesystem types:
+
+- APFS
+
+.. code:: bash
+
+	# write to timestamp
+	$ echo "TOP SECRET" | fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -w
+	
+	# read hidden data from timestamp
+	$ fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -r
+	TOP SECRET
+	
+	# clean up timestamps
+	$ fishy -d testfs-apfs.dd timestamp_hiding -m metadata.json -c
+	
+inode_padding
+......................
+
+The ``inode_padding`` subcommand provides methods to read, write and clean
+padding fields in inodes.
+
+Available for these filesystem types:
+
+- APFS
+
+.. code:: bash
+
+	# write to inode padding
+	$ echo "TOP SECRET" | fishy -d testfs-apfs.dd inode_padding -m metadata.json -w
+	
+	# read from inode padding
+	$ fishy -d testfs-apfs.dd inode_padding -m metadata.json -r
+	TOP SECRET
+	
+	# clean up inode padding
+	$ fishy -d testfst-apfs.dd inode_padding -m metadata.json -c
+
+write_gen_counter
+......................
+
+The ``write_gen`` subcommand provides methods to read, write and clean
+the write counter found in inodes.
+
+Available for these filesystem types:
+
+- APFS
+
+.. code:: bash
+
+	# write to write counter
+	$ echo "TOP SECRET" | fishy -d testfs-apfs.dd write_gen -m metadata.json -w
+	
+	# read from write counter
+	$ fishy -d testfs-apfs.dd write_gen -m metadata.json -r
+	TOP SECRET
+	
+	# clean up write counter
+	$ fishy -d testfst-apfs.dd write_gen -m metadata.json -c
+	
+ext_field_padding
+......................
+
+The ``xfield_padding`` subcommand provides methods to read, write and clean
+dynamically created padding fields in the extended field section of an inode.
+
+Available for these filesystem types:
+
+- APFS
+
+.. code:: bash
+
+	# write to extended field padding
+	$ echo "TOP SECRET" | fishy -d testfs-apfs.dd xfield_padding -m metadata.json -w
+	
+	# read from extended field padding
+	$ fishy -d testfs-apfs.dd xfield_padding -m metadata.json -r
+	TOP SECRET
+	
+	# clean up extended field padding
+	$ fishy -d testfst-apfs.dd xfield_padding -m metadata.json -c	
+
+
 
 Encryption and Checksumming
 ...........................

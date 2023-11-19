@@ -91,6 +91,7 @@ class OSD2:
                 file_metadata = file_entry['metadata']
                 file_metadata = EXT4OSD2Metadata(file_metadata)
                 self.fs.clear(file_metadata)
+
         else:
             raise NotImplementedError()
 
@@ -101,7 +102,7 @@ class OSD2:
         :raises: NotImplementedError
         """
         if self.fs_type == 'EXT4':
-            if self.metadata.get_files():
+            if len(list(self.metadata.get_files())) > 0:
                 for file_entry in self.metadata.get_files():
                     file_metadata = file_entry['metadata']
                     file_metadata = EXT4OSD2Metadata(file_metadata)
